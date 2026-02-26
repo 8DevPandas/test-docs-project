@@ -1,0 +1,63 @@
+name: Sync Docs
+on:
+  push:
+    paths:
+      - 'DOCS/**'
+      - '.github/workflows/sync-docs.yml'
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Register project and upload docs
+        run: |
+          HUB_URL="https://tandem-docs.vercel.app"
+          PROJECT_SLUG="probanding"
+          PROJECT_NAME="probando"
+
+          # Register project (idempotent — returns existing if already created)
+          echo "📝 Registering project..."
+          curl -sf -X POST "$HUB_URL/api/projects/register" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ADMIN_API_KEY" \
+            -d "{\"slug\": \"$PROJECT_SLUG\", \"name\": \"$PROJECT_NAME\"}"
+          echo ""
+          echo "✅ Project registered"
+
+          # Build and upload docs
+          echo "📄 Uploading documentation..."
+          DOCS_JSON="["
+          FIRST=true
+          SORT_ORDER=0
+          for file in $(ls DOCS/*.md | sort); do
+            FILENAME=$(basename "$file")
+            SLUG="${FILENAME%.md}"
+            CONTENT=$(cat "$file")
+            TITLE=$(echo "$CONTENT" | grep -m1 '^# ' | sed 's/^# //' || echo "$SLUG")
+            [ -z "$TITLE" ] && TITLE="$SLUG"
+            DOC_JSON=$(jq -n \
+              --arg slug "$SLUG" \
+              --arg title "$TITLE" \
+              --arg content "$CONTENT" \
+              --argjson sortOrder "$SORT_ORDER" \
+              '{slug: $slug, title: $title, content: $content, sortOrder: $sortOrder}')
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              DOCS_JSON="$DOCS_JSON,"
+            fi
+            DOCS_JSON="$DOCS_JSON$DOC_JSON"
+            SORT_ORDER=$((SORT_ORDER + 1))
+          done
+          DOCS_JSON="$DOCS_JSON]"
+          PAYLOAD=$(jq -n --argjson docs "$DOCS_JSON" '{docs: $docs, replace: true}')
+          RESPONSE=$(curl -sf -X POST "$HUB_URL/api/projects/$PROJECT_SLUG/docs" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ADMIN_API_KEY" \
+            -d "$PAYLOAD")
+          echo "$RESPONSE"
+          echo "✅ Docs synced"
+        env:
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
