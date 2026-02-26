@@ -17,13 +17,21 @@ jobs:
           HUB_URL="https://tandem-docs.vercel.app"
           PROJECT_SLUG="probanding"
           PROJECT_NAME="probando"
+          REPO_NAME="test-docs-project"
+          REPO_URL="https://github.com/8DevPandas/test-docs-project"
 
           # Register project (idempotent — returns existing if already created)
           echo "📝 Registering project..."
+          REGISTER_PAYLOAD=$(jq -n \
+            --arg slug "$PROJECT_SLUG" \
+            --arg name "$PROJECT_NAME" \
+            --arg repoName "$REPO_NAME" \
+            --arg repoUrl "$REPO_URL" \
+            '{slug: $slug, name: $name} + (if $repoName != "" then {repoName: $repoName} else {} end) + (if $repoUrl != "" then {repoUrl: $repoUrl} else {} end)')
           curl -sf -X POST "$HUB_URL/api/projects/register" \
             -H "Content-Type: application/json" \
             -H "x-api-key: $ADMIN_API_KEY" \
-            -d "{\"slug\": \"$PROJECT_SLUG\", \"name\": \"$PROJECT_NAME\"}"
+            -d "$REGISTER_PAYLOAD"
           echo ""
           echo "✅ Project registered"
 
